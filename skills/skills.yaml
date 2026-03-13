@@ -26,6 +26,14 @@ skills:
       - logistics_query
     required_tools:
       - order_query
+    # 快捷操作配置 - 前端动态加载
+    quick_actions:
+      - label: "[ORDER] 订单查询"
+        message: "查询订单 12345678"
+      - label: "[ORDER] 待发货"
+        message: "查询订单 87654321"
+      - label: "[ORDER] 已送达"
+        message: "查询订单 11111111"
     config:
       max_retries: 3
       timeout: 30

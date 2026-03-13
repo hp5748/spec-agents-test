@@ -159,7 +159,25 @@ skills:
       - your_intent
     required_tools:
       - your_tool
+    # 快捷操作配置 - 前端动态加载
+    quick_actions:
+      - label: "[YOUR] 操作名称"
+        message: "预设的消息内容"
 ```
+
+### 快捷操作配置
+
+`quick_actions` 配置项用于定义前端界面中的快捷操作按钮，支持动态加载：
+
+```yaml
+quick_actions:
+  - label: "[ORDER] 订单查询"    # 按钮显示文本
+    message: "查询订单 12345678"  # 点击后发送的消息
+  - label: "[ORDER] 待发货"
+    message: "查询订单 87654321"
+```
+
+前端会在页面加载和新建会话时自动从 `/api/skills` 接口获取快捷操作并渲染按钮。
 
 ### 技能 API
 

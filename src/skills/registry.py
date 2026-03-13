@@ -31,6 +31,7 @@ class SkillMeta:
     skill_class: Type[BaseSkill]
     config: SkillConfig
     status: SkillStatus = SkillStatus.ENABLED
+    quick_actions: List[Dict[str, str]] = None  # 快捷操作配置
 
 
 class SkillRegistry:
@@ -222,7 +223,8 @@ class SkillRegistry:
                 "supported_intents": temp_instance.supported_intents,
                 "required_tools": temp_instance.required_tools,
                 "status": meta.status.value,
-                "priority": meta.config.priority
+                "priority": meta.config.priority,
+                "quick_actions": meta.quick_actions or []  # 快捷操作
             })
         return result
 
@@ -453,6 +455,13 @@ class SkillRegistry:
 
             # 注册技能
             if self.register(skill_class, config):
+                # 保存快捷操作配置到元信息
+                quick_actions = skill_def.get('quick_actions', [])
+                # 使用技能实例的 name 作为 key（与 register 方法一致）
+                temp_instance = skill_class(config)
+                skill_key = temp_instance.name
+                if skill_key in self._skills:
+                    self._skills[skill_key].quick_actions = quick_actions
                 return skill_class
 
             return None

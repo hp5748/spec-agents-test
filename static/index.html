@@ -640,10 +640,9 @@
                 <div class="welcome-icon">[ ]</div>
                 <h2>System Ready</h2>
                 <p>AI Agent 调测系统已就绪 // 输入指令开始交互</p>
-                <div class="quick-actions">
-                    <button class="quick-action" onclick="sendQuickMessage('查询订单 12345678')">[ORDER] 订单查询</button>
-                    <button class="quick-action" onclick="sendQuickMessage('查询订单 87654321')">[ORDER] 待发货</button>
-                    <button class="quick-action" onclick="sendQuickMessage('查询订单 11111111')">[ORDER] 已送达</button>
+                <div class="quick-actions" id="quickActions">
+                    <!-- 快捷操作按钮将通过 API 动态加载 -->
+                    <span style="color: var(--text-secondary); font-size: 0.8rem;">LOADING...</span>
                 </div>
             </div>
         </div>
@@ -957,6 +956,9 @@
                 sessionId = data.session_id;
                 updateSessionDisplay();
 
+                // 获取动态快捷操作
+                const quickActionsHTML = await getQuickActionsHTML();
+
                 // 清空界面
                 const container = document.getElementById('messagesContainer');
                 container.innerHTML = `
@@ -965,9 +967,7 @@
                         <h2>System Ready</h2>
                         <p>AI Agent 调测系统已就绪 // 输入指令开始交互</p>
                         <div class="quick-actions">
-                            <button class="quick-action" onclick="sendQuickMessage('查询订单 12345678')">[ORDER] 订单查询</button>
-                            <button class="quick-action" onclick="sendQuickMessage('查询订单 87654321')">[ORDER] 待发货</button>
-                            <button class="quick-action" onclick="sendQuickMessage('查询订单 11111111')">[ORDER] 已送达</button>
+                            ${quickActionsHTML}
                         </div>
                     </div>
                 `;
@@ -994,8 +994,67 @@
         document.addEventListener('DOMContentLoaded', () => {
             initMatrix();
             updateSessionDisplay();
+            loadQuickActions();  // 动态加载快捷操作
             document.getElementById('messageInput').focus();
         });
+
+        // 从 API 加载快捷操作
+        async function loadQuickActions() {
+            try {
+                const response = await fetch(`${API_BASE}/api/skills`);
+                const data = await response.json();
+
+                const container = document.getElementById('quickActions');
+                container.innerHTML = '';
+
+                let hasActions = false;
+
+                // 遍历所有技能的快捷操作
+                for (const skill of data.skills) {
+                    if (skill.quick_actions && skill.quick_actions.length > 0) {
+                        hasActions = true;
+                        for (const action of skill.quick_actions) {
+                            const btn = document.createElement('button');
+                            btn.className = 'quick-action';
+                            btn.textContent = action.label;
+                            btn.onclick = () => sendQuickMessage(action.message);
+                            container.appendChild(btn);
+                        }
+                    }
+                }
+
+                // 如果没有快捷操作，显示默认提示
+                if (!hasActions) {
+                    container.innerHTML = '<span style="color: var(--text-secondary); font-size: 0.8rem;">NO QUICK ACTIONS</span>';
+                }
+            } catch (error) {
+                console.error('加载快捷操作失败:', error);
+                const container = document.getElementById('quickActions');
+                container.innerHTML = '<span style="color: var(--cyber-red); font-size: 0.8rem;">[ERROR] LOAD FAILED</span>';
+            }
+        }
+
+        // 获取所有快捷操作（用于 newSession 时重新渲染）
+        function getQuickActionsHTML() {
+            return new Promise((resolve) => {
+                fetch(`${API_BASE}/api/skills`)
+                    .then(res => res.json())
+                    .then(data => {
+                        let html = '';
+                        for (const skill of data.skills) {
+                            if (skill.quick_actions && skill.quick_actions.length > 0) {
+                                for (const action of skill.quick_actions) {
+                                    html += `<button class="quick-action" onclick="sendQuickMessage('${action.message}')">${action.label}</button>`;
+                                }
+                            }
+                        }
+                        resolve(html || '<span style="color: var(--text-secondary); font-size: 0.8rem;">NO QUICK ACTIONS</span>');
+                    })
+                    .catch(() => {
+                        resolve('<span style="color: var(--cyber-red); font-size: 0.8rem;">[ERROR] LOAD FAILED</span>');
+                    });
+            });
+        }
     </script>
 </body>
 </html>

@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 # 添加项目路径
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent.parent.parent.parent  # skills/order-assistant/scripts -> 项目根
 sys.path.insert(0, str(project_root / "src"))
 
 from skills.base import BaseSkill, SkillConfig, SkillContext, SkillResult
