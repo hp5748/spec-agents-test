@@ -31,6 +31,11 @@ class Config:
     # 记忆配置
     MEMORY_WINDOW: int = 5  # 保留最近5轮对话
 
+    # Skills 配置
+    SKILLS_ENABLED: bool = True  # 是否启用技能系统
+    SKILLS_HOT_RELOAD: bool = True  # 是否启用技能热加载
+    SKILLS_CONFIG_FILE: str = "config/skills_config.json"  # 技能配置文件路径
+
     @classmethod
     def validate(cls) -> bool:
         """验证必要配置是否存在"""

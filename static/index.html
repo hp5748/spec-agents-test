@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能客服 Agent</title>
+    <title>AI Agent 调测入口</title>
     <style>
         * {
             margin: 0;
@@ -12,111 +12,112 @@
         }
 
         :root {
-            --primary: #6366f1;
-            --primary-dark: #4f46e5;
-            --secondary: #ec4899;
-            --bg-dark: #0f0f23;
-            --bg-card: rgba(255, 255, 255, 0.05);
-            --text-primary: #ffffff;
-            --text-secondary: #a1a1aa;
-            --border: rgba(255, 255, 255, 0.1);
+            --cyber-green: #00ff9f;
+            --cyber-blue: #00d4ff;
+            --cyber-purple: #b24bf3;
+            --cyber-red: #ff2a6d;
+            --cyber-yellow: #ffd319;
+            --bg-dark: #0a0a0f;
+            --bg-card: rgba(0, 255, 159, 0.03);
+            --border-glow: rgba(0, 255, 159, 0.3);
+            --text-primary: #e0e0e0;
+            --text-secondary: #6b7280;
         }
 
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             background: var(--bg-dark);
             min-height: 100vh;
             overflow: hidden;
+            color: var(--text-primary);
         }
 
-        /* 动态背景 */
-        .bg-animation {
+        /* 矩阵雨背景 */
+        .matrix-bg {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 0;
-            overflow: hidden;
+            opacity: 0.15;
+            pointer-events: none;
         }
 
-        .bg-animation::before {
+        /* 扫描线效果 */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 255, 159, 0.02) 2px,
+                rgba(0, 255, 159, 0.02) 4px
+            );
+        }
+
+        /* 网格背景 */
+        .grid-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            background-image:
+                linear-gradient(rgba(0, 255, 159, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 159, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* 角落装饰 */
+        .corner-decor {
+            position: fixed;
+            width: 100px;
+            height: 100px;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .corner-decor::before,
+        .corner-decor::after {
             content: '';
             position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: linear-gradient(
-                45deg,
-                #0f0f23 0%,
-                #1a1a3e 25%,
-                #0f0f23 50%,
-                #1a1a3e 75%,
-                #0f0f23 100%
-            );
-            background-size: 400% 400%;
-            animation: gradientShift 15s ease infinite;
+            background: var(--cyber-green);
         }
 
-        .bg-orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.5;
-            animation: float 20s ease-in-out infinite;
-        }
+        .corner-tl { top: 20px; left: 20px; }
+        .corner-tl::before { width: 60px; height: 2px; top: 0; left: 0; }
+        .corner-tl::after { width: 2px; height: 60px; top: 0; left: 0; }
 
-        .bg-orb-1 {
-            width: 600px;
-            height: 600px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            top: -200px;
-            right: -200px;
-            animation-delay: 0s;
-        }
+        .corner-tr { top: 20px; right: 20px; }
+        .corner-tr::before { width: 60px; height: 2px; top: 0; right: 0; }
+        .corner-tr::after { width: 2px; height: 60px; top: 0; right: 0; }
 
-        .bg-orb-2 {
-            width: 500px;
-            height: 500px;
-            background: linear-gradient(135deg, #ec4899, #f43f5e);
-            bottom: -150px;
-            left: -150px;
-            animation-delay: -5s;
-        }
+        .corner-bl { bottom: 20px; left: 20px; }
+        .corner-bl::before { width: 60px; height: 2px; bottom: 0; left: 0; }
+        .corner-bl::after { width: 2px; height: 60px; bottom: 0; left: 0; }
 
-        .bg-orb-3 {
-            width: 400px;
-            height: 400px;
-            background: linear-gradient(135deg, #06b6d4, #3b82f6);
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            animation-delay: -10s;
-        }
-
-        @keyframes gradientShift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            25% { transform: translate(50px, -50px) rotate(5deg); }
-            50% { transform: translate(-30px, 30px) rotate(-5deg); }
-            75% { transform: translate(-50px, -30px) rotate(3deg); }
-        }
+        .corner-br { bottom: 20px; right: 20px; }
+        .corner-br::before { width: 60px; height: 2px; bottom: 0; right: 0; }
+        .corner-br::after { width: 2px; height: 60px; bottom: 0; right: 0; }
 
         /* 主容器 */
         .chat-container {
             position: relative;
-            z-index: 1;
+            z-index: 10;
             display: flex;
             flex-direction: column;
             height: 100vh;
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 30px;
         }
 
         /* 头部 */
@@ -126,10 +127,20 @@
             justify-content: space-between;
             padding: 20px 25px;
             background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
+            border: 1px solid var(--border-glow);
+            border-radius: 0;
             margin-bottom: 20px;
+            position: relative;
+        }
+
+        .chat-header::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 20px;
+            right: 20px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--cyber-green), transparent);
         }
 
         .header-left {
@@ -141,29 +152,44 @@
         .logo {
             width: 50px;
             height: 50px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            border-radius: 15px;
+            background: transparent;
+            border: 2px solid var(--cyber-green);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
-            animation: pulse 2s ease-in-out infinite;
+            font-size: 20px;
+            position: relative;
+            animation: logoPulse 2s ease-in-out infinite;
         }
 
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+        .logo::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            border: 1px solid var(--cyber-green);
+            opacity: 0.3;
+        }
+
+        @keyframes logoPulse {
+            0%, 100% { box-shadow: 0 0 10px var(--cyber-green), inset 0 0 10px rgba(0, 255, 159, 0.1); }
+            50% { box-shadow: 0 0 20px var(--cyber-green), inset 0 0 20px rgba(0, 255, 159, 0.2); }
         }
 
         .header-title h1 {
-            font-size: 1.3rem;
-            color: var(--text-primary);
-            font-weight: 600;
+            font-size: 1.2rem;
+            color: var(--cyber-green);
+            font-weight: 400;
+            letter-spacing: 3px;
+            text-transform: uppercase;
         }
 
         .header-title p {
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
+            letter-spacing: 1px;
         }
 
         .header-actions {
@@ -173,35 +199,35 @@
 
         .header-btn {
             padding: 10px 20px;
-            border: 1px solid var(--border);
-            background: var(--bg-card);
-            color: var(--text-primary);
-            border-radius: 12px;
+            background: transparent;
+            border: 1px solid var(--border-glow);
+            color: var(--cyber-green);
             cursor: pointer;
             transition: all 0.3s ease;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
+            font-family: inherit;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
 
         .header-btn:hover {
-            background: var(--primary);
-            border-color: var(--primary);
-            transform: translateY(-2px);
+            background: rgba(0, 255, 159, 0.1);
+            box-shadow: 0 0 15px rgba(0, 255, 159, 0.3);
         }
 
         /* 消息区域 */
         .messages-container {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            padding: 25px;
             background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
+            border: 1px solid var(--border-glow);
             margin-bottom: 20px;
+            position: relative;
         }
 
         .messages-container::-webkit-scrollbar {
-            width: 6px;
+            width: 4px;
         }
 
         .messages-container::-webkit-scrollbar-track {
@@ -209,25 +235,24 @@
         }
 
         .messages-container::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 3px;
+            background: var(--cyber-green);
         }
 
         .message {
             display: flex;
-            gap: 12px;
-            margin-bottom: 20px;
-            animation: messageIn 0.3s ease-out;
+            gap: 15px;
+            margin-bottom: 25px;
+            animation: messageGlitch 0.3s ease-out;
         }
 
-        @keyframes messageIn {
+        @keyframes messageGlitch {
             from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateX(-20px);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateX(0);
             }
         }
 
@@ -236,73 +261,69 @@
         }
 
         .message-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--cyber-green);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 14px;
             flex-shrink: 0;
-        }
-
-        .message.assistant .message-avatar {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: var(--cyber-green);
         }
 
         .message.user .message-avatar {
-            background: linear-gradient(135deg, #10b981, #059669);
+            border-color: var(--cyber-blue);
+            color: var(--cyber-blue);
         }
 
         .message-content {
             max-width: 70%;
             padding: 15px 20px;
-            border-radius: 18px;
-            line-height: 1.6;
+            line-height: 1.7;
+            font-size: 0.9rem;
         }
 
         .message.assistant .message-content {
-            background: rgba(99, 102, 241, 0.15);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            color: var(--text-primary);
-            border-bottom-left-radius: 5px;
+            background: rgba(0, 255, 159, 0.05);
+            border-left: 2px solid var(--cyber-green);
         }
 
         .message.user .message-content {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
-            border-bottom-right-radius: 5px;
+            background: rgba(0, 212, 255, 0.05);
+            border-right: 2px solid var(--cyber-blue);
+            text-align: right;
         }
 
         .message-meta {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-top: 8px;
-            font-size: 0.75rem;
+            margin-top: 10px;
+            font-size: 0.7rem;
             color: var(--text-secondary);
         }
 
         .intent-tag {
-            padding: 3px 10px;
-            background: linear-gradient(135deg, var(--secondary), #f43f5e);
-            border-radius: 20px;
-            font-size: 0.7rem;
-            color: white;
+            padding: 2px 8px;
+            background: transparent;
+            border: 1px solid var(--cyber-purple);
+            color: var(--cyber-purple);
+            font-size: 0.65rem;
+            letter-spacing: 1px;
         }
 
         /* 打字指示器 */
         .typing-indicator {
             display: flex;
             gap: 5px;
-            padding: 15px 20px;
+            padding: 10px 0;
         }
 
         .typing-indicator span {
-            width: 8px;
-            height: 8px;
-            background: var(--primary);
-            border-radius: 50%;
+            width: 6px;
+            height: 6px;
+            background: var(--cyber-green);
             animation: typing 1.4s ease-in-out infinite;
         }
 
@@ -310,8 +331,8 @@
         .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 
         @keyframes typing {
-            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-            30% { transform: translateY(-10px); opacity: 1; }
+            0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
+            30% { opacity: 1; transform: translateY(-5px); }
         }
 
         /* 输入区域 */
@@ -320,9 +341,7 @@
             gap: 15px;
             padding: 20px;
             background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
+            border: 1px solid var(--border-glow);
             align-items: flex-end;
         }
 
@@ -331,25 +350,34 @@
             position: relative;
         }
 
+        .input-wrapper::before {
+            content: '>';
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--cyber-green);
+            font-size: 1rem;
+        }
+
         .input-wrapper textarea {
             width: 100%;
-            padding: 15px 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border);
-            border-radius: 15px;
+            padding: 15px 20px 15px 35px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-glow);
             color: var(--text-primary);
-            font-size: 1rem;
+            font-size: 0.9rem;
             resize: none;
             outline: none;
             transition: all 0.3s ease;
-            min-height: 56px;
+            min-height: 50px;
             max-height: 150px;
             font-family: inherit;
         }
 
         .input-wrapper textarea:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            border-color: var(--cyber-green);
+            box-shadow: 0 0 10px rgba(0, 255, 159, 0.2);
         }
 
         .input-wrapper textarea::placeholder {
@@ -357,41 +385,36 @@
         }
 
         .send-btn {
-            width: 56px;
-            height: 56px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            border: none;
-            border-radius: 15px;
-            color: white;
+            width: 50px;
+            height: 50px;
+            background: transparent;
+            border: 1px solid var(--cyber-green);
+            color: var(--cyber-green);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
-            font-size: 20px;
+            font-size: 18px;
+            font-family: inherit;
         }
 
         .send-btn:hover:not(:disabled) {
-            transform: scale(1.05);
-            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+            background: rgba(0, 255, 159, 0.1);
+            box-shadow: 0 0 20px rgba(0, 255, 159, 0.4);
         }
 
         .send-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.3;
             cursor: not-allowed;
-        }
-
-        .send-btn.loading {
-            background: var(--bg-card);
-            border: 2px solid var(--primary);
         }
 
         .send-btn.loading::after {
             content: '';
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             border: 2px solid transparent;
-            border-top-color: var(--primary);
+            border-top-color: var(--cyber-green);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -404,89 +427,102 @@
         .welcome-message {
             text-align: center;
             padding: 60px 20px;
-            color: var(--text-secondary);
         }
 
         .welcome-icon {
-            font-size: 60px;
+            font-size: 48px;
             margin-bottom: 20px;
-            animation: floatIcon 3s ease-in-out infinite;
+            animation: glitch 2s infinite;
         }
 
-        @keyframes floatIcon {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-15px); }
+        @keyframes glitch {
+            0%, 90%, 100% { transform: translate(0); }
+            92% { transform: translate(-2px, 2px); }
+            94% { transform: translate(2px, -2px); }
+            96% { transform: translate(-2px, -2px); }
+            98% { transform: translate(2px, 2px); }
         }
 
         .welcome-message h2 {
-            color: var(--text-primary);
-            font-size: 1.5rem;
+            color: var(--cyber-green);
+            font-size: 1.3rem;
+            font-weight: 400;
+            letter-spacing: 5px;
             margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .welcome-message p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            letter-spacing: 1px;
         }
 
         .quick-actions {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 12px;
             justify-content: center;
-            margin-top: 30px;
+            margin-top: 40px;
         }
 
         .quick-action {
-            padding: 12px 20px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 25px;
+            padding: 12px 24px;
+            background: transparent;
+            border: 1px solid var(--border-glow);
             color: var(--text-primary);
             cursor: pointer;
             transition: all 0.3s ease;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
+            font-family: inherit;
+            letter-spacing: 1px;
         }
 
         .quick-action:hover {
-            background: var(--primary);
-            border-color: var(--primary);
-            transform: translateY(-3px);
+            background: rgba(0, 255, 159, 0.1);
+            border-color: var(--cyber-green);
+            color: var(--cyber-green);
+            box-shadow: 0 0 15px rgba(0, 255, 159, 0.3);
         }
 
         /* 连接状态 */
         .connection-status {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 30px;
+            right: 30px;
             padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
+            font-size: 0.7rem;
             display: flex;
             align-items: center;
             gap: 8px;
             z-index: 100;
-            background: var(--bg-card);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-glow);
             color: var(--text-primary);
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
+            width: 6px;
+            height: 6px;
+            background: var(--cyber-green);
             animation: blink 2s ease-in-out infinite;
         }
 
-        .status-dot.connected { background: #10b981; }
-        .status-dot.connecting { background: #f59e0b; }
-        .status-dot.disconnected { background: #ef4444; }
+        .status-dot.connecting { background: var(--cyber-yellow); }
+        .status-dot.disconnected { background: var(--cyber-red); }
 
         @keyframes blink {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            50% { opacity: 0.3; }
         }
 
         /* 流式光标 */
         .streaming-cursor::after {
-            content: '▋';
-            animation: blinkCursor 0.8s ease-in-out infinite;
+            content: '_';
+            color: var(--cyber-green);
+            animation: blinkCursor 0.6s ease-in-out infinite;
         }
 
         @keyframes blinkCursor {
@@ -494,10 +530,45 @@
             50% { opacity: 0; }
         }
 
+        /* 状态栏 */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 25px;
+            background: rgba(0, 0, 0, 0.8);
+            border-top: 1px solid var(--border-glow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            z-index: 100;
+            letter-spacing: 1px;
+        }
+
+        .status-bar-left, .status-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-item span {
+            color: var(--cyber-green);
+        }
+
         /* 响应式 */
         @media (max-width: 768px) {
             .chat-container {
-                padding: 10px;
+                padding: 15px;
             }
 
             .chat-header {
@@ -513,21 +584,37 @@
             .quick-actions {
                 flex-direction: column;
             }
+
+            .corner-decor {
+                display: none;
+            }
+
+            .status-bar {
+                padding: 0 15px;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- 动态背景 -->
-    <div class="bg-animation">
-        <div class="bg-orb bg-orb-1"></div>
-        <div class="bg-orb bg-orb-2"></div>
-        <div class="bg-orb bg-orb-3"></div>
-    </div>
+    <!-- 矩阵雨背景 -->
+    <canvas class="matrix-bg" id="matrixCanvas"></canvas>
+
+    <!-- 网格背景 -->
+    <div class="grid-overlay"></div>
+
+    <!-- 扫描线 -->
+    <div class="scanlines"></div>
+
+    <!-- 角落装饰 -->
+    <div class="corner-decor corner-tl"></div>
+    <div class="corner-decor corner-tr"></div>
+    <div class="corner-decor corner-bl"></div>
+    <div class="corner-decor corner-br"></div>
 
     <!-- 连接状态 -->
     <div class="connection-status">
-        <div class="status-dot connected" id="statusDot"></div>
-        <span id="statusText">已连接</span>
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">SYSTEM ONLINE</span>
     </div>
 
     <!-- 主容器 -->
@@ -535,29 +622,28 @@
         <!-- 头部 -->
         <div class="chat-header">
             <div class="header-left">
-                <div class="logo">🤖</div>
+                <div class="logo">AI</div>
                 <div class="header-title">
-                    <h1>智能客服 Agent</h1>
-                    <p>基于 DeepSeek-V3.2 · 流式响应</p>
+                    <h1>AI Agent 调测入口</h1>
+                    <p>SKILL SYSTEM v1.0 // DEEPSEEK-V3.2</p>
                 </div>
             </div>
             <div class="header-actions">
-                <button class="header-btn" onclick="newSession()">🔄 新会话</button>
-                <button class="header-btn" onclick="clearHistory()">🗑️ 清空</button>
+                <button class="header-btn" onclick="newSession()">[NEW]</button>
+                <button class="header-btn" onclick="clearHistory()">[CLEAR]</button>
             </div>
         </div>
 
         <!-- 消息区域 -->
         <div class="messages-container" id="messagesContainer">
             <div class="welcome-message">
-                <div class="welcome-icon">👋</div>
-                <h2>欢迎使用智能客服</h2>
-                <p>我可以帮您查询订单、推荐商品、处理投诉等</p>
+                <div class="welcome-icon">[ ]</div>
+                <h2>System Ready</h2>
+                <p>AI Agent 调测系统已就绪 // 输入指令开始交互</p>
                 <div class="quick-actions">
-                    <button class="quick-action" onclick="sendQuickMessage('查询订单 12345678')">📦 查询订单</button>
-                    <button class="quick-action" onclick="sendQuickMessage('推荐一款手机')">🛒 商品推荐</button>
-                    <button class="quick-action" onclick="sendQuickMessage('我要投诉')">📢 我要投诉</button>
-                    <button class="quick-action" onclick="sendQuickMessage('你们有什么服务？')">❓ 了解服务</button>
+                    <button class="quick-action" onclick="sendQuickMessage('查询订单 12345678')">[ORDER] 订单查询</button>
+                    <button class="quick-action" onclick="sendQuickMessage('查询订单 87654321')">[ORDER] 待发货</button>
+                    <button class="quick-action" onclick="sendQuickMessage('查询订单 11111111')">[ORDER] 已送达</button>
                 </div>
             </div>
         </div>
@@ -567,15 +653,27 @@
             <div class="input-wrapper">
                 <textarea
                     id="messageInput"
-                    placeholder="输入您的问题..."
+                    placeholder="输入指令..."
                     rows="1"
                     onkeydown="handleKeyDown(event)"
                     oninput="autoResize(this)"
                 ></textarea>
             </div>
             <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-                ➤
+                &gt;
             </button>
+        </div>
+    </div>
+
+    <!-- 状态栏 -->
+    <div class="status-bar">
+        <div class="status-bar-left">
+            <div class="status-item">SESSION: <span id="sessionDisplay">--</span></div>
+            <div class="status-item">MODE: <span>SKILL</span></div>
+        </div>
+        <div class="status-bar-right">
+            <div class="status-item">MODEL: <span>DEEPSEEK-V3.2</span></div>
+            <div class="status-item">STATUS: <span id="systemStatus">READY</span></div>
         </div>
     </div>
 
@@ -583,6 +681,49 @@
         const API_BASE = window.location.origin;
         let sessionId = 'session_' + Date.now();
         let isStreaming = false;
+
+        // 矩阵雨效果
+        function initMatrix() {
+            const canvas = document.getElementById('matrixCanvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+            const fontSize = 14;
+            const columns = canvas.width / fontSize;
+            const drops = [];
+
+            for (let i = 0; i < columns; i++) {
+                drops[i] = 1;
+            }
+
+            function draw() {
+                ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#00ff9f';
+                ctx.font = fontSize + 'px monospace';
+
+                for (let i = 0; i < drops.length; i++) {
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+
+            setInterval(draw, 50);
+        }
+
+        // 更新会话显示
+        function updateSessionDisplay() {
+            document.getElementById('sessionDisplay').textContent = sessionId.substring(0, 12) + '...';
+        }
 
         // 自动调整输入框高度
         function autoResize(textarea) {
@@ -602,8 +743,10 @@
         function updateStatus(status, text) {
             const dot = document.getElementById('statusDot');
             const textEl = document.getElementById('statusText');
+            const sysStatus = document.getElementById('systemStatus');
             dot.className = 'status-dot ' + status;
             textEl.textContent = text;
+            sysStatus.textContent = status === 'connected' ? 'READY' : status === 'connecting' ? 'PROCESSING' : 'ERROR';
         }
 
         // 添加消息
@@ -619,7 +762,7 @@
 
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
-            avatar.textContent = isUser ? '👤' : '🤖';
+            avatar.textContent = isUser ? 'USR' : 'SYS';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -654,7 +797,7 @@
 
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
-            avatar.textContent = '🤖';
+            avatar.textContent = 'SYS';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -675,7 +818,6 @@
 
         // 格式化内容
         function formatContent(content) {
-            // 简单的Markdown支持
             return content
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -715,7 +857,7 @@
             sendBtn.disabled = true;
             sendBtn.classList.add('loading');
             sendBtn.innerHTML = '';
-            updateStatus('connecting', '正在响应...');
+            updateStatus('connecting', 'PROCESSING...');
 
             addTypingIndicator();
 
@@ -732,7 +874,7 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error('请求失败');
+                    throw new Error('REQUEST FAILED');
                 }
 
                 const reader = response.body.getReader();
@@ -770,7 +912,6 @@
                                         if (textPart && textPart.nodeType === Node.TEXT_NODE) {
                                             textPart.textContent = '';
                                         }
-                                        // 更新内容，保留meta
                                         const meta = contentDiv.querySelector('.message-meta');
                                         contentDiv.innerHTML = formatContent(currentContent);
                                         if (meta) contentDiv.appendChild(meta);
@@ -778,32 +919,31 @@
                                         scrollToBottom();
                                     }
                                 } else if (data.type === 'done') {
-                                    // 移除光标
                                     if (contentDiv) {
                                         contentDiv.classList.remove('streaming-cursor');
                                     }
                                 } else if (data.type === 'error') {
-                                    addMessage('❌ 错误: ' + data.content, false);
+                                    addMessage('[ERROR] ' + data.content, false);
                                 }
                             } catch (e) {
-                                console.error('解析错误:', e);
+                                console.error('Parse error:', e);
                             }
                         }
                     }
                 }
 
-                updateStatus('connected', '已连接');
+                updateStatus('connected', 'SYSTEM ONLINE');
 
             } catch (error) {
                 removeTypingIndicator();
-                addMessage('❌ 网络错误，请重试', false);
-                updateStatus('disconnected', '连接失败');
+                addMessage('[ERROR] Network failure - retry required', false);
+                updateStatus('disconnected', 'CONNECTION LOST');
                 console.error('Error:', error);
             } finally {
                 isStreaming = false;
                 sendBtn.disabled = false;
                 sendBtn.classList.remove('loading');
-                sendBtn.innerHTML = '➤';
+                sendBtn.innerHTML = '&gt;';
             }
         }
 
@@ -815,24 +955,24 @@
                 });
                 const data = await response.json();
                 sessionId = data.session_id;
+                updateSessionDisplay();
 
                 // 清空界面
                 const container = document.getElementById('messagesContainer');
                 container.innerHTML = `
                     <div class="welcome-message">
-                        <div class="welcome-icon">👋</div>
-                        <h2>欢迎使用智能客服</h2>
-                        <p>我可以帮您查询订单、推荐商品、处理投诉等</p>
+                        <div class="welcome-icon">[ ]</div>
+                        <h2>System Ready</h2>
+                        <p>AI Agent 调测系统已就绪 // 输入指令开始交互</p>
                         <div class="quick-actions">
-                            <button class="quick-action" onclick="sendQuickMessage('查询订单 12345678')">📦 查询订单</button>
-                            <button class="quick-action" onclick="sendQuickMessage('推荐一款手机')">🛒 商品推荐</button>
-                            <button class="quick-action" onclick="sendQuickMessage('我要投诉')">📢 我要投诉</button>
-                            <button class="quick-action" onclick="sendQuickMessage('你们有什么服务？')">❓ 了解服务</button>
+                            <button class="quick-action" onclick="sendQuickMessage('查询订单 12345678')">[ORDER] 订单查询</button>
+                            <button class="quick-action" onclick="sendQuickMessage('查询订单 87654321')">[ORDER] 待发货</button>
+                            <button class="quick-action" onclick="sendQuickMessage('查询订单 11111111')">[ORDER] 已送达</button>
                         </div>
                     </div>
                 `;
 
-                updateStatus('connected', '新会话');
+                updateStatus('connected', 'SYSTEM ONLINE');
             } catch (error) {
                 console.error('Error:', error);
             }
@@ -852,6 +992,8 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
+            initMatrix();
+            updateSessionDisplay();
             document.getElementById('messageInput').focus();
         });
     </script>

@@ -2,6 +2,7 @@
 智能客服Agent模块
 主Agent：意图识别 + 路由 + 响应生成
 使用硅基流动的 DeepSeek-V3.2 模型
+集成 Skills 技能系统
 """
 import json
 from typing import Dict, List, Optional
@@ -12,9 +13,15 @@ from prompts import ROUTER_PROMPTS
 from tools import get_tools, TOOL_MAP
 from memory import conversation_memory
 
+# Skills 集成
+from skills import skill_registry, SkillContext
+
 
 class CustomerServiceAgent:
     """智能客服Agent"""
+
+    # 类级别的技能初始化标记
+    _skills_initialized = False
 
     def __init__(self, session_id: str = "default"):
         """初始化Agent"""
@@ -29,9 +36,29 @@ class CustomerServiceAgent:
             base_url=Config.BASE_URL,
             temperature=Config.TEMPERATURE,
             max_tokens=Config.MAX_TOKENS,
+            request_timeout=120,  # 请求超时 120 秒
+            max_retries=1,        # 最多重试 1 次
         )
         self.tools = get_tools()
         self.memory = conversation_memory
+
+        # 初始化技能系统（只执行一次）
+        self._init_skills()
+
+    @classmethod
+    def _init_skills(cls):
+        """初始化技能系统"""
+        if cls._skills_initialized:
+            return
+
+        if Config.SKILLS_ENABLED:
+            try:
+                # 自动发现并注册技能
+                count = skill_registry.auto_discover()
+                print(f"[OK] 成功注册 {count} 个技能")
+                cls._skills_initialized = True
+            except Exception as e:
+                print(f"[WARN] 技能系统初始化失败: {e}，将使用降级模式")
 
     def classify_intent(self, user_input: str) -> str:
         """识别用户意图"""
@@ -68,6 +95,51 @@ class CustomerServiceAgent:
         }
         tool_name = intent_tool_map.get(intent)
         return TOOL_MAP.get(tool_name) if tool_name else None
+
+    def process_with_skill(self, user_input: str, intent: str) -> str:
+        """
+        使用技能处理请求
+
+        Args:
+            user_input: 用户输入
+            intent: 识别的意图
+
+        Returns:
+            技能处理结果
+        """
+        if not Config.SKILLS_ENABLED:
+            return None
+
+        try:
+            # 构建技能上下文
+            context = SkillContext(
+                session_id=self.session_id,
+                user_input=user_input,
+                intent=intent,
+                chat_history=self.memory.get_history_text(self.session_id),
+                tools=TOOL_MAP,
+                llm=self.llm
+            )
+
+            # 根据意图获取技能
+            skill = skill_registry.get_skill_by_intent(
+                intent,
+                tools=TOOL_MAP,
+                llm=self.llm
+            )
+
+            if skill:
+                print(f"[DEBUG] 使用技能: {skill.name}")
+                result = skill.execute_with_logging(context)
+                if result.success:
+                    return result.response
+                else:
+                    print(f"[WARN] 技能执行失败: {result.error}")
+
+        except Exception as e:
+            print(f"[ERROR] 技能处理出错: {e}")
+
+        return None
 
     def process_with_tool(self, user_input: str, intent: str) -> str:
         """使用工具处理请求"""
@@ -148,10 +220,19 @@ class CustomerServiceAgent:
 
         print(f"[DEBUG] 识别意图: {intent} ({intent_name})")
 
-        # 3. 根据意图处理
-        if intent in [IntentType.ORDER_QUERY, IntentType.PRODUCT_CONSULT, IntentType.COMPLAINT]:
+        # 3. 根据意图处理（优先使用 Skills）
+        response = None
+
+        # 3.1 尝试使用技能
+        if Config.SKILLS_ENABLED:
+            response = self.process_with_skill(user_input, intent)
+
+        # 3.2 降级到工具
+        if response is None and intent in [IntentType.ORDER_QUERY, IntentType.PRODUCT_CONSULT, IntentType.COMPLAINT]:
             response = self.process_with_tool(user_input, intent)
-        else:
+
+        # 3.3 最后使用通用响应
+        if response is None:
             response = self.generate_response(user_input, intent)
 
         # 4. 记录助手回复
@@ -234,8 +315,25 @@ class CustomerServiceAgent:
         # 先发送意图信息
         yield f"data: {json.dumps({'type': 'intent', 'intent': intent, 'intent_name': intent_name})}\n\n"
 
-        # 3. 根据意图处理
+        # 3. 根据意图处理（优先使用 Skills）
         full_response = ""
+
+        # 3.1 尝试使用技能
+        if Config.SKILLS_ENABLED:
+            skill_response = self.process_with_skill(user_input, intent)
+            if skill_response:
+                full_response = skill_response
+                # 模拟流式输出
+                for i in range(0, len(full_response), 10):
+                    chunk = full_response[i:i+10]
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+
+                # 记录助手回复
+                self.memory.add_message(self.session_id, "assistant", full_response)
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+        # 3.2 降级到工具或流式生成
         if intent in [IntentType.ORDER_QUERY, IntentType.PRODUCT_CONSULT, IntentType.COMPLAINT]:
             # 工具调用场景
             full_response = self.process_with_tool(user_input, intent)

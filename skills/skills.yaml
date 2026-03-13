@@ -1,0 +1,62 @@
+# Skills 技能配置文件
+# 定义所有可用的技能及其配置
+
+# 全局配置
+global:
+  enabled: true
+  hot_reload: true
+  default_timeout: 30
+  default_retries: 3
+
+# 技能定义
+# 每个技能对应 skills/ 目录下的一个子目录
+skills:
+  # ==========================================
+  # 订单查询技能 - 模板示例
+  # 后续开发新技能请参考此结构
+  # ==========================================
+  order-assistant:
+    name: order_assistant
+    description: 订单查询和跟踪服务
+    version: 1.0.0
+    enabled: true
+    priority: 10
+    intents:
+      - order_query
+      - logistics_query
+    required_tools:
+      - order_query
+    config:
+      max_retries: 3
+      timeout: 30
+      stream_enabled: true
+
+# ============================================
+# 开发新技能指南
+# ============================================
+#
+# 1. 创建技能目录结构:
+#    skills/
+#    └── your-skill/
+#        ├── SKILL.md           # 元数据和核心指令
+#        ├── scripts/
+#        │   └── executor.py    # 技能执行器
+#        ├── references/        # 参考资料 (可选)
+#        └── assets/            # 模板资源 (可选)
+#
+# 2. 在此文件中添加配置:
+#    skills:
+#      your-skill:
+#        name: your_skill
+#        description: 技能描述
+#        version: 1.0.0
+#        enabled: true
+#        priority: 10
+#        intents:
+#          - your_intent
+#        required_tools:
+#          - your_tool
+#
+# 3. 参考 order-assistant 目录作为模板
+#
+# ============================================
