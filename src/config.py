@@ -34,7 +34,6 @@ class Config:
     # Skills 配置
     SKILLS_ENABLED: bool = True  # 是否启用技能系统
     SKILLS_HOT_RELOAD: bool = True  # 是否启用技能热加载
-    SKILLS_CONFIG_FILE: str = "config/skills_config.json"  # 技能配置文件路径
 
     @classmethod
     def validate(cls) -> bool:
