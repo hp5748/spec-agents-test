@@ -3,6 +3,8 @@
 管理环境变量和应用配置
 """
 import os
+import yaml
+from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -43,19 +45,70 @@ class Config:
         return True
 
 
-# 意图类型枚举
-class IntentType:
-    """用户意图类型"""
-    ORDER_QUERY = "order_query"      # 订单查询
-    PRODUCT_CONSULT = "product_consult"  # 商品咨询
-    COMPLAINT = "complaint"          # 投诉处理
-    GENERAL_QA = "general_qa"        # 通用问答
+class IntentManager:
+    """
+    意图管理器 - 从配置文件加载
 
+    单例模式，管理意图类型、名称、描述和示例
+    """
 
-# 意图中文名称映射
-INTENT_NAMES = {
-    IntentType.ORDER_QUERY: "订单查询",
-    IntentType.PRODUCT_CONSULT: "商品咨询",
-    IntentType.COMPLAINT: "投诉处理",
-    IntentType.GENERAL_QA: "通用问答",
-}
+    _instance: Optional['IntentManager'] = None
+    _intents: Dict[str, dict] = {}  # code -> {name, description, examples}
+    _initialized: bool = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    @classmethod
+    def load(cls, config_path: str) -> int:
+        """
+        从 YAML 加载意图配置
+
+        Args:
+            config_path: 配置文件路径
+
+        Returns:
+            加载的意图数量
+        """
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+
+        cls._intents = config.get('intents', {})
+        cls._initialized = True
+
+        return len(cls._intents)
+
+    @classmethod
+    def get_intents(cls) -> List[str]:
+        """获取所有意图代码列表"""
+        return list(cls._intents.keys())
+
+    @classmethod
+    def get_intent_config(cls, intent: str) -> Optional[dict]:
+        """获取意图完整配置"""
+        return cls._intents.get(intent)
+
+    @classmethod
+    def get_intent_name(cls, intent: str) -> str:
+        """获取意图中文名"""
+        cfg = cls._intents.get(intent)
+        return cfg.get('name', intent) if cfg else intent
+
+    @classmethod
+    def get_intent_description(cls, intent: str) -> str:
+        """获取意图描述"""
+        cfg = cls._intents.get(intent)
+        return cfg.get('description', '') if cfg else ''
+
+    @classmethod
+    def get_intent_examples(cls, intent: str) -> List[str]:
+        """获取意图示例"""
+        cfg = cls._intents.get(intent)
+        return cfg.get('examples', []) if cfg else []
+
+    @classmethod
+    def get_all_configs(cls) -> Dict[str, dict]:
+        """获取所有意图配置（用于生成 Prompt）"""
+        return cls._intents

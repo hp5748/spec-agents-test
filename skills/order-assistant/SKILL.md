@@ -1,23 +1,81 @@
 ---
 # ==========================================
-# 技能元数据 (YAML Front Matter)
+# 基础元数据（必需）
 # ==========================================
 name: order-assistant
-description: 订单查询和跟踪服务
+description: 订单查询服务
 version: 1.0.0
 priority: 10
 intents:
   - order_query
-  - logistics_query
-required_tools:
-  - order_query
+required_tools: []
+
+# ==========================================
+# 感知增强（可选）
+# ==========================================
+keywords:
+  - 订单
+  - 查询
+  - 物流
+  - 发货
+  - 送达
+examples:
+  - "查询订单 12345678"
+  - "我的订单到哪了"
+  - "帮我看看订单状态"
+
+# ==========================================
+# 执行配置（可选）
+# ==========================================
+execution:
+  timeout: 30
+  stream_enabled: true
+  load_references: true
+  load_assets: true
+
+# ==========================================
+# 验证配置（可选）
+# ==========================================
+validation:
+  result_schema: order_result
+  required_fields:
+    - order_id
+    - status
+
+# ==========================================
+# 重试配置（可选）
+# ==========================================
+retry:
+  max_attempts: 3
+  strategy: exponential
+  base_delay: 1.0
+  retryable_errors:
+    - timeout
+    - rate_limit
+    - connection_error
+
+# ==========================================
+# 降级配置（可选）
+# ==========================================
+fallback:
+  strategy: llm_assist
+  message: "订单系统暂时繁忙，请稍后重试"
+
+# ==========================================
+# 反馈配置（可选）
+# ==========================================
+feedback:
+  error_templates:
+    validation_failed: "订单信息获取异常，正在重新查询..."
+    timeout: "查询超时，正在重试..."
+    not_found: "未找到该订单，请检查订单号是否正确"
 ---
 
 # Order Assistant 技能
 
 > **模板说明**: 本技能作为开发新技能的模板参考
 
-订单查询和跟踪服务，帮助用户查询订单状态、物流信息。
+订单查询服务，帮助用户查询订单状态。
 
 ---
 
@@ -37,14 +95,13 @@ order-assistant/
 ## 功能说明
 
 - 根据订单号查询订单状态
-- 查询物流跟踪信息
 - 处理订单相关问题咨询
 
 ---
 
 ## 触发条件
 
-当用户意图为 `order_query` 或 `logistics_query` 时自动触发。
+当用户意图为 `order_query` 时自动触发。
 
 ### 订单号格式
 
@@ -68,67 +125,6 @@ order-assistant/
 | 12345678 | 已发货 | iPhone 15 Pro |
 | 87654321 | 待发货 | MacBook Air |
 | 11111111 | 已送达 | AirPods Pro |
-
----
-
-## 开发新技能指南
-
-### 1. 创建目录结构
-
-```bash
-mkdir -p skills/your-skill/scripts
-touch skills/your-skill/SKILL.md
-touch skills/your-skill/scripts/executor.py
-```
-
-### 2. 编写 SKILL.md
-
-复制本文件，修改元数据和指令。
-
-### 3. 实现 executor.py
-
-```python
-import sys
-from pathlib import Path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root / "src"))
-
-from skills.base import BaseSkill, SkillConfig, SkillContext, SkillResult
-from skills.registry import register_skill
-
-@register_skill(config=SkillConfig(priority=10))
-class YourSkill(BaseSkill):
-    name = "your_skill"
-    description = "技能描述"
-    version = "1.0.0"
-    required_tools = []  # 依赖的工具
-    supported_intents = ["your_intent"]
-
-    def execute(self, context: SkillContext) -> SkillResult:
-        # 实现逻辑
-        return SkillResult(
-            success=True,
-            response="响应内容",
-            used_tools=[]
-        )
-
-SKILL_CLASS = YourSkill
-```
-
-### 4. 注册到 skills.yaml
-
-```yaml
-skills:
-  your-skill:
-    name: your_skill
-    description: 技能描述
-    version: 1.0.0
-    enabled: true
-    priority: 10
-    intents:
-      - your_intent
-    required_tools: []
-```
 
 ---
 

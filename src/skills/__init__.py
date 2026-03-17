@@ -9,7 +9,13 @@ from .base import (
     SkillConfig,
     SkillContext,
     SkillResult,
-    SkillStatus
+    SkillStatus,
+    ExecutionStatus,
+    SkillMatch,
+    ValidationResult,
+    RetryDecision,
+    ExecutionTrace,
+    ExecutionAttempt
 )
 
 from .registry import (
@@ -30,6 +36,40 @@ from .hot_reload import (
     get_hot_reloader
 )
 
+from .resource_loader import (
+    SkillMetadata,
+    SkillMetaParser,
+    ResourceLoader,
+    ReferenceContent,
+    AssetContent
+)
+
+from .validators import (
+    ResultValidator,
+    ValidationSchema,
+    result_validator,
+    validate_result
+)
+
+from .retry import (
+    RetryManager,
+    RetryConfig,
+    RetryStrategy,
+    RetryState,
+    retry_manager,
+    create_retry_manager
+)
+
+from .feedback import (
+    ErrorFeedback,
+    FeedbackGenerator,
+    FeedbackLevel,
+    FeedbackType,
+    feedback_generator,
+    generate_feedback,
+    format_error_for_user
+)
+
 __all__ = [
     # 基类
     'BaseSkill',
@@ -37,6 +77,12 @@ __all__ = [
     'SkillContext',
     'SkillResult',
     'SkillStatus',
+    'ExecutionStatus',
+    'SkillMatch',
+    'ValidationResult',
+    'RetryDecision',
+    'ExecutionTrace',
+    'ExecutionAttempt',
 
     # 注册中心
     'SkillRegistry',
@@ -52,7 +98,37 @@ __all__ = [
     'SkillHotReloader',
     'init_hot_reloader',
     'get_hot_reloader',
+
+    # 资源加载
+    'SkillMetadata',
+    'SkillMetaParser',
+    'ResourceLoader',
+    'ReferenceContent',
+    'AssetContent',
+
+    # 验证器
+    'ResultValidator',
+    'ValidationSchema',
+    'result_validator',
+    'validate_result',
+
+    # 重试
+    'RetryManager',
+    'RetryConfig',
+    'RetryStrategy',
+    'RetryState',
+    'retry_manager',
+    'create_retry_manager',
+
+    # 反馈
+    'ErrorFeedback',
+    'FeedbackGenerator',
+    'FeedbackLevel',
+    'FeedbackType',
+    'feedback_generator',
+    'generate_feedback',
+    'format_error_for_user',
 ]
 
 # 版本信息
-__version__ = '1.1.0'
+__version__ = '2.0.0'

@@ -4,83 +4,77 @@
 
 Skills 模块是一个比 Tools 更高级的能力抽象层，用于智能客服系统。
 
-**遵循标准目录结构规范**
+**Agent 驱动 Skill 执行闭环**
 
 主要特性：
 - **标准目录结构**：每个技能独立目录，包含 SKILL.md、scripts、references、assets
-- **YAML 配置管理**：通过 `skills/skills.yaml` 管理所有技能
-- **多步骤操作**：组合多个工具完成复杂任务
-- **专业知识**：每个技能包含特定领域的知识
-- **热加载**：运行时动态更新技能
+- **元数据扫描**：从 SKILL.md 的 YAML Front Matter 扫描元数据
+- **配置简化**：config/skills.yaml 只配置 quick_actions
+- **执行闭环**：感知 → 规划 → 执行 → 观察 → 反馈
+- **重试验证**：支持重试策略、结果验证、降级处理
 
 ## 目录结构
 
 ```
 skills/                           # 技能根目录
-├── skills.yaml                   # 技能配置文件
-├── README.md                     # 使用说明
-│
 ├── order-assistant/              # 订单助手技能
 │   ├── SKILL.md                  # 元数据和核心指令（必需）
 │   ├── scripts/
 │   │   └── executor.py           # 技能执行器（必需）
-│   └── references/
-│       └── order-fields.md       # 参考资料（可选）
+│   ├── references/               # 参考资料（可选）
+│   └── assets/                   # 模板资源（可选）
 │
-├── product-expert/               # 产品专家技能
+├── logistics-assistant/          # 物流查询技能
 │   ├── SKILL.md
-│   └── scripts/
-│       └── executor.py
+│   └── scripts/executor.py
 │
-└── complaint-handler/            # 投诉处理技能
+├── product-assistant/            # 商品咨询技能
+│   ├── SKILL.md
+│   └── scripts/executor.py
+│
+└── complaint-assistant/          # 投诉处理技能
     ├── SKILL.md
-    ├── scripts/
-    │   └── executor.py
-    └── assets/
-        └── response-template.md  # 响应模板（可选）
+    └── scripts/executor.py
+
+config/
+└── skills.yaml                   # 快捷操作配置
 ```
 
-## 单个技能目录规范
+## 核心模块
 
-```
-skill-name/                       # 使用 kebab-case 命名
-├── SKILL.md                      # 必需：YAML 元数据 + 核心指令
-├── scripts/                      # 可选：可执行脚本
-│   └── executor.py               # 技能执行器
-├── references/                   # 可选：参考资料
-│   └── *.md                      # API 文档、字段说明
-└── assets/                       # 可选：模板和静态资源
-    └── *.md                      # 响应模板、配置模板
-```
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| 基类 | `base.py` | SkillConfig, SkillContext, SkillResult, BaseSkill |
+| 注册中心 | `registry.py` | 技能注册、发现、匹配 |
+| 资源加载 | `resource_loader.py` | SKILL.md 解析、references/assets 加载 |
+| 验证器 | `validators.py` | 结果验证 |
+| 重试管理 | `retry.py` | 重试策略和延迟计算 |
+| 反馈生成 | `feedback.py` | 错误反馈生成 |
 
-## 核心类
+## 核心数据类
 
-### 1. BaseSkill - 技能基类
+### 1. SkillConfig - 技能配置
 
 ```python
-from skills import BaseSkill, SkillConfig, SkillContext, SkillResult
-from skills import register_skill
+@dataclass
+class SkillConfig:
+    priority: int = 10
+    enabled: bool = True
+    max_retries: int = 3
+    timeout: int = 30
+    fallback_enabled: bool = True
+    stream_enabled: bool = True
 
-@register_skill(config=SkillConfig(priority=10))
-class MySkill(BaseSkill):
-    name = "my_skill"
-    description = "技能描述"
-    required_tools = ["tool1"]  # 依赖的工具
-    supported_intents = ["intent1", "intent2"]
+    # 重试策略
+    retry_strategy: str = "exponential"  # exponential/linear/fixed
+    retry_base_delay: float = 1.0
 
-    def execute(self, context: SkillContext) -> SkillResult:
-        # 获取工具
-        tool = self.get_tool("tool1")
+    # 验证配置
+    validation_schema: Optional[str] = None
 
-        # 处理逻辑
-        result = tool.do_something(context.user_input)
-
-        return SkillResult(
-            success=True,
-            response="处理结果",
-            data={"key": "value"},
-            used_tools=["tool1"]
-        )
+    # 降级配置
+    fallback_strategy: str = "llm_assist"
+    fallback_message: str = ""
 ```
 
 ### 2. SkillContext - 执行上下文
@@ -88,13 +82,20 @@ class MySkill(BaseSkill):
 ```python
 @dataclass
 class SkillContext:
-    session_id: str       # 会话ID
-    user_input: str       # 用户输入
-    intent: str           # 意图类型
-    chat_history: str     # 对话历史
-    metadata: dict        # 元数据
-    tools: dict           # 可用工具
-    llm: Any              # LLM 实例
+    session_id: str
+    user_input: str
+    intent: str
+    chat_history: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # 运行时依赖
+    tools: Dict[str, Any] = field(default_factory=dict)
+    llm: Any = None
+
+    # 技能资源
+    references: List[ReferenceContent] = field(default_factory=list)
+    assets: List[AssetContent] = field(default_factory=list)
+    instruction: str = ""  # SKILL.md 指令内容
 ```
 
 ### 3. SkillResult - 执行结果
@@ -102,60 +103,181 @@ class SkillContext:
 ```python
 @dataclass
 class SkillResult:
-    success: bool         # 是否成功
-    response: str         # 响应文本
-    data: dict            # 返回数据
-    error: str            # 错误信息
-    used_tools: list      # 使用的工具列表
+    success: bool
+    response: str
+    data: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
+    used_tools: List[str] = field(default_factory=list)
+
+    # 验证信息
+    validation_passed: bool = True
+    validation_errors: List[str] = field(default_factory=list)
+```
+
+### 4. SkillMatch - 技能匹配结果
+
+```python
+@dataclass
+class SkillMatch:
+    skill_name: str
+    confidence: float  # 0.0 - 1.0
+    matched_intents: List[str]
+    matched_keywords: List[str]
+    priority: int
+```
+
+### 5. ExecutionTrace - 执行追踪
+
+```python
+@dataclass
+class ExecutionTrace:
+    trace_id: str
+    skill_name: str
+    status: ExecutionStatus  # pending/running/success/failed/retrying/fallback
+    attempts: List[ExecutionAttempt]
+    final_result: Optional[SkillResult]
+    fallback_used: bool
+    total_elapsed: float
+```
+
+## SKILL.md 配置规范
+
+### YAML Front Matter 完整配置
+
+```yaml
+---
+# ==========================================
+# 基础元数据（必需）
+# ==========================================
+name: skill-name
+description: 技能描述
+version: 1.0.0
+priority: 10
+intents:
+  - intent1
+  - intent2
+required_tools: []
+
+# ==========================================
+# 感知增强（可选）
+# ==========================================
+keywords:
+  - 关键词1
+  - 关键词2
+examples:
+  - "示例输入1"
+  - "示例输入2"
+
+# ==========================================
+# 执行配置（可选）
+# ==========================================
+execution:
+  timeout: 30
+  stream_enabled: true
+  load_references: true
+  load_assets: true
+
+# ==========================================
+# 验证配置（可选）
+# ==========================================
+validation:
+  result_schema: schema_name
+  required_fields:
+    - field1
+    - field2
+
+# ==========================================
+# 重试配置（可选）
+# ==========================================
+retry:
+  max_attempts: 3
+  strategy: exponential
+  base_delay: 1.0
+  retryable_errors:
+    - timeout
+    - rate_limit
+
+# ==========================================
+# 降级配置（可选）
+# ==========================================
+fallback:
+  strategy: llm_assist
+  message: "服务暂时不可用"
+
+# ==========================================
+# 反馈配置（可选）
+# ==========================================
+feedback:
+  error_templates:
+    validation_failed: "验证失败提示"
+    timeout: "超时提示"
+    not_found: "未找到提示"
+---
+
+# 技能指令
+
+技能的详细说明和使用方法...
 ```
 
 ## 使用方式
 
-### 1. 从配置文件加载（推荐）
+### 1. 从 SKILL.md 加载（推荐）
 
 ```python
 from skills import skill_registry
 
-# 从 skills/skills.yaml 加载
-count = skill_registry.load_from_config('skills/skills.yaml')
+# 自动扫描 skills/ 目录下的 SKILL.md
+count = skill_registry.load_from_config('config/skills.yaml')
 print(f"已注册 {count} 个技能")
 ```
 
-### 2. 查看已注册技能
+### 2. 多 Skill 匹配
 
 ```python
-skills = skill_registry.list_skills()
-for skill in skills:
-    print(f"- {skill['name']}: {skill['description']}")
+# 带置信度的多 Skill 匹配
+matches = skill_registry.find_matching_skills(
+    intent="order_query",
+    user_input="查询订单 12345678",
+    top_k=3
+)
+
+for match in matches:
+    print(f"{match.skill_name}: {match.confidence:.2f}")
+
+# 选择最佳 Skill
+best = skill_registry.select_best_skill(matches, strategy="confidence")
 ```
 
-### 3. 使用技能
+### 3. 执行闭环
 
 ```python
-from skills import skill_registry, SkillContext
-
-# 按意图获取技能
-skill = skill_registry.get_skill_by_intent(
-    "order_query",
-    tools={"order_query": order_tool},
-    llm=llm
-)
+from skills import SkillContext
 
 # 创建上下文
 context = SkillContext(
     session_id="session-123",
-    user_input="查询订单 ORD1234567890",
+    user_input="查询订单 12345678",
     intent="order_query"
 )
 
-# 执行技能
-result = skill.execute(context)
+# 获取技能
+skill = skill_registry.get_skill_by_intent("order_query", llm=llm)
+
+# 带重试的执行
+result, trace = skill.execute_with_retry(
+    context,
+    on_retry=lambda attempt, delay, error: print(f"重试 {attempt}")
+)
+
+if trace.fallback_used:
+    print("使用了降级处理")
+
 print(result.response)
 ```
 
-## 配置文件管理
+## 配置文件
 
-### skills/skills.yaml 结构
+### config/skills.yaml（简化版）
 
 ```yaml
 # 全局配置
@@ -163,91 +285,42 @@ global:
   enabled: true
   hot_reload: true
   default_timeout: 30
+  default_retries: 3
 
-# 技能定义
-skills:
-  order_assistant:
-    name: order_assistant
-    description: 专业的订单查询和跟踪服务
-    version: 1.0.0
-    enabled: true
-    priority: 10
-    file: order_assistant.py      # Python 文件
-    class: OrderAssistantSkill    # 类名
-    intents:
-      - order_query
-      - logistics_query
-    required_tools:
-      - order_query
-    config:
-      max_retries: 3
-      timeout: 30
+# 快捷操作配置（前端动态加载）
+quick_actions:
+  order-assistant:
+    - label: "[ORDER] 订单查询"
+      message: "查询订单 12345678"
+  logistics-assistant:
+    - label: "[LOG] 物流查询"
+      message: "查询物流 SF1234567890"
 ```
 
-### 新增技能步骤
+## 执行闭环流程
 
-1. 在 `skills/` 下创建技能目录（如 `new-skill/`）
-2. 创建 `SKILL.md`（元数据 + 核心指令）
-3. 创建 `scripts/executor.py`（执行器）
-4. 在 `skills.yaml` 中添加配置
-5. 重启服务或调用 `/api/skills/reload`
+```
+1. 感知阶段
+   ├── 扫描 skills/ 目录
+   ├── 解析 SKILL.md 元数据
+   └── 计算 Skill 置信度
 
-### 修改技能
+2. 规划阶段
+   ├── 选择最佳 Skill
+   └── 准备降级方案
 
-1. 编辑对应技能目录下的文件
-2. 如启用热加载，自动生效
-3. 或调用 `/api/skills/{name}/reload`
+3. 执行阶段
+   ├── 加载 references/assets
+   ├── 执行技能逻辑
+   └── 追踪执行状态
 
-### 删除技能
+4. 观察阶段
+   ├── 验证结果质量
+   └── 决定重试/降级
 
-1. 从 `skills.yaml` 删除配置
-2. 删除对应的技能目录
-3. 调用 `/api/skills/{name}` DELETE
-
-## 集成到 Agent
-
-```python
-class Agent:
-    _skills_initialized = False
-
-    def __init__(self):
-        self._init_skills()
-
-    @classmethod
-    def _init_skills(cls):
-        if cls._skills_initialized:
-            return
-        skill_registry.auto_discover()
-        cls._skills_initialized = True
-
-    def process_with_skill(self, user_input: str, intent: str) -> str:
-        context = SkillContext(
-            session_id=self.session_id,
-            user_input=user_input,
-            intent=intent
-        )
-
-        skill = skill_registry.get_skill_by_intent(
-            intent,
-            tools=self.tools,
-            llm=self.llm
-        )
-
-        if skill:
-            result = skill.execute(context)
-            return result.response if result.success else None
-        return None
-
-    def chat(self, user_input: str) -> str:
-        intent = self.detect_intent(user_input)
-
-        # 优先使用 Skills
-        response = self.process_with_skill(user_input, intent)
-        if response:
-            return response
-
-        # 降级到 Tools 或 LLM
-        return self.fallback_process(user_input)
+5. 反馈阶段
+   ├── 生成用户友好消息
+   └── 记录执行日志
 ```
 
 ## API 端点
@@ -255,108 +328,19 @@ class Agent:
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/api/skills` | GET | 列出所有技能 |
-| `/api/skills/{name}` | GET | 获取技能详情 |
 | `/api/skills/reload` | POST | 重载所有技能 |
 | `/api/skills/{name}/reload` | POST | 重载单个技能 |
 | `/api/skills/{name}/enable` | POST | 启用技能 |
 | `/api/skills/{name}/disable` | POST | 禁用技能 |
-| `/api/skills/{name}` | DELETE | 删除技能 |
-
-## 热加载
-
-```python
-from skills import init_hot_reloader, get_hot_reloader
-
-# 初始化并启动（监控 skills/ 目录）
-reloader = init_hot_reloader(skill_registry, "skills")
-reloader.start_watch()
-
-# 手动重载
-reloader.reload_skill("order_assistant")
-```
-
-## 配置
-
-### src/config.py
-
-```python
-class Config:
-    SKILLS_ENABLED: bool = True
-    SKILLS_HOT_RELOAD: bool = True
-```
-
-### skills/skills.yaml（主要配置）
-
-```yaml
-global:
-  enabled: true
-  hot_reload: true
-  default_timeout: 30
-```
 
 ## 已实现的技能
 
 | 技能名称 | 意图 | 优先级 | 说明 |
 |---------|------|--------|------|
-| order_assistant | order_query, logistics_query | 10 | 订单查询和跟踪 |
-| product_expert | product_inquiry, product_recommend | 8 | 产品咨询和推荐 |
-| complaint_handler | complaint, refund_request | 15 | 投诉处理 |
-
-## 扩展新技能
-
-### 步骤
-
-1. 在 `skills/` 目录创建新的 Python 文件
-2. 在 `skills.yaml` 中添加配置
-3. 重启服务或调用重载 API
-
-### 示例：创建新技能
-
-**skills/weather_assistant.py:**
-```python
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from skills.base import BaseSkill, SkillConfig, SkillContext, SkillResult
-from skills.registry import register_skill
-
-@register_skill(config=SkillConfig(priority=5))
-class WeatherAssistantSkill(BaseSkill):
-    name = "weather_assistant"
-    description = "天气查询助手"
-    version = "1.0.0"
-    tags = ["天气", "查询"]
-
-    required_tools = []  # 可选
-    supported_intents = ["weather_query"]
-
-    def execute(self, context: SkillContext) -> SkillResult:
-        user_input = context.user_input
-
-        # 处理逻辑
-        return SkillResult(
-            success=True,
-            response=f"您查询的天气信息：...",
-            used_tools=[]
-        )
-```
-
-**skills/skills.yaml 添加配置:**
-```yaml
-skills:
-  weather_assistant:
-    name: weather_assistant
-    description: 天气查询助手
-    version: 1.0.0
-    enabled: true
-    priority: 5
-    file: weather_assistant.py
-    class: WeatherAssistantSkill
-    intents:
-      - weather_query
-    required_tools: []
-```
+| order-assistant | order_query | 10 | 订单查询 |
+| logistics-assistant | logistics_query | 10 | 物流跟踪 |
+| product-assistant | product_consult | 10 | 商品咨询 |
+| complaint-assistant | complaint | 10 | 投诉处理 |
 
 ## 与 Tools 的区别
 
@@ -366,9 +350,15 @@ skills:
 | 操作类型 | 单步 | 多步骤 |
 | 工具组合 | 单一 | 多个 |
 | 知识 | 无 | 包含专业知识 |
-| 状态 | 无状态 | 可维护上下文 |
-| 输出 | 单一结果 | 支持流式 |
+| 重试验证 | 无 | 支持重试和验证 |
+| 降级处理 | 无 | 支持多种降级策略 |
+| 执行追踪 | 无 | 完整执行追踪 |
 
-## 更多信息
+## 扩展新技能
 
-详细使用说明请参考 `skills/README.md`
+1. 在 `skills/` 目录创建新的技能目录
+2. 创建 `SKILL.md`（包含 YAML Front Matter）
+3. 创建 `scripts/executor.py`
+4. 重启服务或调用 `/api/skills/reload`
+
+*文档更新时间: 2026-03-16*

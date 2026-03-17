@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from config import Config
+from config import Config, IntentManager
 from agent import CustomerServiceAgent, create_agent
 
 # Skills 相关导入
@@ -314,6 +314,134 @@ def disable_skill(skill_name: str):
     return {"success": True, "skill_name": skill_name}
 
 
+# ===== 配置刷新 API =====
+
+@app.post("/api/config/refresh")
+def refresh_config():
+    """
+    刷新配置
+
+    1. 重新扫描 skills 目录下注册的技能
+    2. 检查 config 文件夹下配置文件的更新状态
+    3. 返回最新的技能列表（包含 quick_actions）
+    """
+    import os
+    from datetime import datetime
+
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    skills_dir = os.path.join(project_root, "skills")
+    config_dir = os.path.join(project_root, "config")
+
+    result = {
+        "status": "ok",
+        "skills": {},
+        "config_files": {},
+        "reloaded": False
+    }
+
+    # 1. 扫描 skills 目录
+    if os.path.exists(skills_dir):
+        skill_dirs = []
+        for item in os.listdir(skills_dir):
+            item_path = os.path.join(skills_dir, item)
+            if os.path.isdir(item_path) and not item.startswith('_'):
+                # 检查是否有 SKILL.md 或 scripts/executor.py
+                has_skill_md = os.path.exists(os.path.join(item_path, "SKILL.md"))
+                has_executor = os.path.exists(os.path.join(item_path, "scripts", "executor.py"))
+                if has_skill_md or has_executor:
+                    skill_dirs.append({
+                        "name": item,
+                        "has_skill_md": has_skill_md,
+                        "has_executor": has_executor
+                    })
+        result["skills"]["directories"] = skill_dirs
+        result["skills"]["count"] = len(skill_dirs)
+
+    # 2. 检查 config 目录下的文件状态
+    config_files_status = []
+    if os.path.exists(config_dir):
+        for filename in os.listdir(config_dir):
+            if filename.endswith(('.yaml', '.yml')):
+                filepath = os.path.join(config_dir, filename)
+                stat = os.stat(filepath)
+                mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                config_files_status.append({
+                    "name": filename,
+                    "path": filepath,
+                    "modified_time": mtime,
+                    "size": stat.st_size
+                })
+    result["config_files"]["list"] = config_files_status
+    result["config_files"]["count"] = len(config_files_status)
+
+    # 3. 重新加载配置
+    try:
+        # 查找配置文件
+        config_path = os.path.join(config_dir, "skills.yaml")
+        if not os.path.exists(config_path):
+            config_path = os.path.join(skills_dir, "skills.yaml")
+
+        if os.path.exists(config_path):
+            count = skill_registry.reload_all()
+            result["reloaded"] = True
+            result["message"] = f"成功重新加载 {count} 个技能"
+            result["loaded_count"] = count
+            # 返回最新的技能列表
+            result["skills"]["registered"] = skill_registry.list_skills()
+        else:
+            result["message"] = "未找到配置文件 skills.yaml"
+            result["reloaded"] = False
+    except Exception as e:
+        result["status"] = "error"
+        result["message"] = f"重载配置失败: {str(e)}"
+        result["reloaded"] = False
+
+    return result
+
+
+@app.get("/api/config/status")
+def get_config_status():
+    """
+    获取配置状态
+
+    返回当前配置文件的状态和已注册的技能信息
+    """
+    import os
+    from datetime import datetime
+
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    config_dir = os.path.join(project_root, "config")
+
+    # 获取配置文件状态
+    config_status = {
+        "config_dir": config_dir,
+        "exists": os.path.exists(config_dir),
+        "files": []
+    }
+
+    if os.path.exists(config_dir):
+        for filename in os.listdir(config_dir):
+            if filename.endswith(('.yaml', '.yml')):
+                filepath = os.path.join(config_dir, filename)
+                stat = os.stat(filepath)
+                config_status["files"].append({
+                    "name": filename,
+                    "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "size": stat.st_size
+                })
+
+    # 获取已注册技能
+    registered_skills = skill_registry.list_skills()
+
+    return {
+        "config": config_status,
+        "registered_skills": {
+            "count": len(registered_skills),
+            "list": registered_skills
+        }
+    }
+
+
 def main():
     """启动服务"""
     import uvicorn
@@ -341,14 +469,26 @@ def main():
         print("请创建 .env 文件并配置 SILICONFLOW_API_KEY")
         return
 
+    # 加载意图配置
+    intents_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "intents.yaml")
+    if os.path.exists(intents_path):
+        count = IntentManager.load(intents_path)
+        print(f"[OK] 加载意图配置，共 {count} 个意图")
+    else:
+        print(f"[WARN] 未找到意图配置文件: {intents_path}")
+
     # 初始化技能系统
     if Config.SKILLS_ENABLED:
         try:
             from skills import skill_registry
 
-            # 优先从配置文件加载
+            # 优先从配置文件加载（优先 config 目录）
             project_root = os.path.dirname(os.path.dirname(__file__))
-            config_path = os.path.join(project_root, "skills", "skills.yaml")
+            config_path = os.path.join(project_root, "config", "skills.yaml")
+
+            if not os.path.exists(config_path):
+                # 降级到 skills 目录
+                config_path = os.path.join(project_root, "skills", "skills.yaml")
 
             if os.path.exists(config_path):
                 count = skill_registry.load_from_config(config_path)

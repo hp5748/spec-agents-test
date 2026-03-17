@@ -1,0 +1,28 @@
+# Skills 技能配置文件（简化版）
+# 元数据从 skills/*/SKILL.md 扫描，此处只配置快捷操作
+
+# 全局配置
+global:
+  enabled: true
+  hot_reload: true
+  default_timeout: 30
+  default_retries: 3
+
+# 快捷操作配置（前端动态加载）
+# key 为技能目录名，value 为快捷操作列表
+quick_actions:
+  order-assistant:
+    - label: "[ORDER] 订单查询"
+      message: "查询订单 12345678"
+
+  logistics-assistant:
+    - label: "[LOG] 物流查询"
+      message: "查询物流 SF1234567890"
+
+  product-assistant:
+    - label: "[PROD] 手机推荐"
+      message: "有什么手机推荐"
+
+  complaint-assistant:
+    - label: "[COMP] 投诉质量"
+      message: "商品质量有问题"

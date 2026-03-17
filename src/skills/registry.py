@@ -1,7 +1,7 @@
 """
 技能注册中心
 管理所有技能的注册、发现和获取
-支持从 YAML 配置文件加载技能
+支持从 SKILL.md 扫描元数据，从 skills.yaml 加载 quick_actions
 """
 import importlib
 import importlib.util
@@ -9,10 +9,16 @@ import inspect
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Type, Any
-from dataclasses import dataclass
+from typing import Dict, List, Optional, Type, Any, Tuple
+from dataclasses import dataclass, field
 
-from .base import BaseSkill, SkillConfig, SkillStatus
+from .base import (
+    BaseSkill, SkillConfig, SkillStatus, SkillMatch,
+    SkillResult, SkillContext
+)
+from .resource_loader import (
+    SkillMetaParser, SkillMetadata, ResourceLoader
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,8 @@ class SkillMeta:
     config: SkillConfig
     status: SkillStatus = SkillStatus.ENABLED
     quick_actions: List[Dict[str, str]] = None  # 快捷操作配置
+    metadata: SkillMetadata = None  # 从 SKILL.md 解析的元数据
+    skill_dir: Path = None  # 技能目录路径
 
 
 class SkillRegistry:
@@ -39,6 +47,10 @@ class SkillRegistry:
     技能注册中心（单例模式）
 
     负责管理所有技能的注册、发现和实例化
+    支持：
+    - 从 SKILL.md 扫描元数据
+    - 从 skills.yaml 加载 quick_actions
+    - 多 Skill 匹配与置信度评估
     """
 
     _instance: Optional['SkillRegistry'] = None
@@ -55,11 +67,15 @@ class SkillRegistry:
         self._initialized = True
         self._skills: Dict[str, SkillMeta] = {}
         self._intent_map: Dict[str, str] = {}  # intent -> skill_name
+        self._config_path: Optional[str] = None  # 保存配置文件路径
+        self._quick_actions: Dict[str, List[Dict[str, str]]] = {}  # 快捷操作配置
 
     def register(
         self,
         skill_class: Type[BaseSkill],
-        config: SkillConfig = None
+        config: SkillConfig = None,
+        metadata: SkillMetadata = None,
+        skill_dir: Path = None
     ) -> bool:
         """
         注册技能
@@ -67,6 +83,8 @@ class SkillRegistry:
         Args:
             skill_class: 技能类
             config: 技能配置
+            metadata: 从 SKILL.md 解析的元数据
+            skill_dir: 技能目录路径
 
         Returns:
             注册是否成功
@@ -80,15 +98,30 @@ class SkillRegistry:
             if skill_name in self._skills:
                 logger.warning(f"技能 {skill_name} 已存在，将被覆盖")
 
+            # 使用元数据更新配置（如果有的话）
+            if metadata:
+                config = config or SkillConfig()
+                config.priority = metadata.priority
+                config.timeout = metadata.timeout
+                config.max_retries = metadata.max_retries
+                config.retry_strategy = metadata.retry_strategy
+                config.retry_base_delay = metadata.retry_base_delay
+                config.fallback_strategy = metadata.fallback_strategy
+                config.fallback_message = metadata.fallback_message
+                config.validation_schema = metadata.validation_schema
+
             # 存储技能元信息
             self._skills[skill_name] = SkillMeta(
                 skill_class=skill_class,
                 config=config or SkillConfig(),
-                status=SkillStatus.ENABLED
+                status=SkillStatus.ENABLED,
+                metadata=metadata,
+                skill_dir=skill_dir
             )
 
             # 建立意图映射
-            for intent in temp_instance.supported_intents:
+            intents = metadata.intents if metadata else temp_instance.supported_intents
+            for intent in intents:
                 # 检查是否已有技能处理该意图
                 if intent in self._intent_map:
                     existing_skill = self._intent_map[intent]
@@ -205,6 +238,107 @@ class SkillRegistry:
         logger.info(f"[SkillRegistry] 匹配到技能: {skill_name}")
         return self.get_skill(skill_name, tools, llm)
 
+    # ============================================================
+    # 新增：多 Skill 匹配与置信度评估
+    # ============================================================
+
+    def find_matching_skills(
+        self,
+        intent: str,
+        user_input: str,
+        top_k: int = 3
+    ) -> List[SkillMatch]:
+        """
+        多 Skill 匹配，返回带置信度的排序列表
+
+        Args:
+            intent: 用户意图
+            user_input: 用户输入
+            top_k: 返回的最大匹配数量
+
+        Returns:
+            匹配的技能列表（按置信度排序）
+        """
+        matches = []
+        user_input_lower = user_input.lower()
+
+        for skill_name, skill_meta in self._skills.items():
+            if skill_meta.status == SkillStatus.DISABLED:
+                continue
+
+            confidence = 0.0
+            matched_intents = []
+            matched_keywords = []
+
+            # 1. 意图匹配
+            metadata = skill_meta.metadata
+            intents = metadata.intents if metadata else []
+
+            if intent in intents:
+                confidence += 0.5  # 意图匹配贡献 50% 置信度
+                matched_intents.append(intent)
+
+            # 2. 关键词匹配
+            keywords = metadata.keywords if metadata else []
+            for keyword in keywords:
+                if keyword.lower() in user_input_lower:
+                    confidence += 0.1  # 每个关键词贡献 10%
+                    matched_keywords.append(keyword)
+
+            # 限制置信度上限
+            confidence = min(confidence, 1.0)
+
+            # 如果有匹配，添加到列表
+            if confidence > 0:
+                matches.append(SkillMatch(
+                    skill_name=skill_name,
+                    confidence=confidence,
+                    matched_intents=matched_intents,
+                    matched_keywords=matched_keywords,
+                    priority=skill_meta.config.priority
+                ))
+
+        # 排序：先按置信度，再按优先级
+        matches.sort(key=lambda m: (-m.confidence, -m.priority))
+
+        return matches[:top_k]
+
+    def select_best_skill(
+        self,
+        matches: List[SkillMatch],
+        strategy: str = "confidence"
+    ) -> Optional[SkillMatch]:
+        """
+        选择最佳 Skill
+
+        Args:
+            matches: 匹配的技能列表
+            strategy: 选择策略 (confidence/priority/first)
+
+        Returns:
+            最佳匹配，如果没有匹配返回 None
+        """
+        if not matches:
+            return None
+
+        if strategy == "confidence":
+            # 已经在 find_matching_skills 中按置信度排序
+            return matches[0]
+
+        elif strategy == "priority":
+            # 按优先级排序
+            sorted_matches = sorted(matches, key=lambda m: -m.priority)
+            return sorted_matches[0]
+
+        elif strategy == "first":
+            return matches[0]
+
+        return matches[0]
+
+    # ============================================================
+    # 原有方法
+    # ============================================================
+
     def list_skills(self) -> List[Dict[str, Any]]:
         """
         列出所有已注册技能
@@ -215,6 +349,12 @@ class SkillRegistry:
         result = []
         for name, meta in self._skills.items():
             temp_instance = meta.skill_class(meta.config)
+
+            # 合并快捷操作（从配置文件 + 元数据）
+            quick_actions = meta.quick_actions or []
+            if name in self._quick_actions:
+                quick_actions = self._quick_actions[name]
+
             result.append({
                 "name": temp_instance.name,
                 "description": temp_instance.description,
@@ -224,8 +364,27 @@ class SkillRegistry:
                 "required_tools": temp_instance.required_tools,
                 "status": meta.status.value,
                 "priority": meta.config.priority,
-                "quick_actions": meta.quick_actions or []  # 快捷操作
+                "quick_actions": quick_actions
             })
+        return result
+
+    def get_quick_actions(self) -> Dict[str, List[Dict[str, str]]]:
+        """
+        获取所有快捷操作配置
+
+        Returns:
+            技能名称 -> 快捷操作列表的映射
+        """
+        result = {}
+
+        # 从配置文件加载的快捷操作
+        result.update(self._quick_actions)
+
+        # 补充技能本身的快捷操作
+        for name, meta in self._skills.items():
+            if name not in result and meta.quick_actions:
+                result[name] = meta.quick_actions
+
         return result
 
     def auto_discover(self, package_path: str = None) -> int:
@@ -289,15 +448,24 @@ class SkillRegistry:
         self._skills.clear()
         self._intent_map.clear()
 
-        # 重新发现
+        # 优先从配置文件重新加载（如果有保存的路径）
+        if self._config_path and Path(self._config_path).exists():
+            return self.load_from_config(self._config_path)
+
+        # 降级到自动发现
         return self.auto_discover()
 
     def load_from_config(self, config_path: str = None) -> int:
         """
         从 YAML 配置文件加载技能
 
+        新逻辑：
+        1. 扫描 skills/ 目录下的所有 SKILL.md
+        2. 从 SKILL.md 解析元数据
+        3. 从 skills.yaml 读取 quick_actions 并合并
+
         Args:
-            config_path: 配置文件路径，默认为项目根目录的 skills/skills.yaml
+            config_path: 配置文件路径，默认为项目根目录的 config/skills.yaml
 
         Returns:
             成功注册的技能数量
@@ -308,12 +476,11 @@ class SkillRegistry:
 
         # 确定配置文件路径
         if config_path is None:
-            # 尝试几个默认位置
             project_root = Path(__file__).parent.parent.parent
             possible_paths = [
+                project_root / "config" / "skills.yaml",   # 优先使用 config 目录
                 project_root / "skills" / "skills.yaml",
                 project_root / "skills" / "skills.yml",
-                project_root / "config" / "skills.yaml",
             ]
             config_path = None
             for p in possible_paths:
@@ -331,6 +498,9 @@ class SkillRegistry:
             logger.error(f"配置文件不存在: {config_path}")
             return 0
 
+        # 保存配置文件路径（用于后续重载）
+        self._config_path = str(config_path)
+
         # 读取配置
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -345,66 +515,119 @@ class SkillRegistry:
             logger.info("技能系统已禁用")
             return 0
 
-        # 加载技能
-        skills_config = config.get('skills', {})
+        # 加载快捷操作配置
+        self._quick_actions = config.get('quick_actions', {})
+
+        # 技能目录
+        project_root = config_path.parent.parent  # config/ -> project_root
+        skills_dir = project_root / "skills"
+
         count = 0
 
-        for skill_name, skill_def in skills_config.items():
-            if not skill_def.get('enabled', True):
-                logger.info(f"技能 {skill_name} 已禁用，跳过")
+        # 扫描 skills/ 目录下的所有技能
+        for skill_folder in skills_dir.iterdir():
+            if not skill_folder.is_dir():
+                continue
+            if skill_folder.name.startswith('_') or skill_folder.name.startswith('.'):
+                continue
+
+            skill_md_path = skill_folder / "SKILL.md"
+
+            if not skill_md_path.exists():
+                logger.debug(f"跳过无 SKILL.md 的目录: {skill_folder}")
                 continue
 
             try:
+                # 从 SKILL.md 解析元数据
+                metadata = SkillMetaParser.parse_skill_metadata(skill_md_path)
+
+                if not metadata or not metadata.name:
+                    logger.warning(f"无法解析技能元数据: {skill_md_path}")
+                    continue
+
                 # 加载技能模块
-                skill_instance = self._load_skill_from_definition(
-                    skill_name, skill_def, config_path.parent
-                )
-                if skill_instance:
-                    count += 1
+                skill_class = self._load_skill_class(skill_folder, metadata)
+
+                if skill_class:
+                    # 构建 SkillConfig
+                    skill_config = SkillConfig(
+                        priority=metadata.priority,
+                        enabled=True,
+                        max_retries=metadata.max_retries,
+                        timeout=metadata.timeout,
+                        retry_strategy=metadata.retry_strategy,
+                        retry_base_delay=metadata.retry_base_delay,
+                        validation_schema=metadata.validation_schema,
+                        fallback_strategy=metadata.fallback_strategy,
+                        fallback_message=metadata.fallback_message
+                    )
+
+                    # 注册技能
+                    if self.register(skill_class, skill_config, metadata, skill_folder):
+                        # 设置快捷操作
+                        skill_name = skill_class().name
+                        if skill_name in self._skills:
+                            # 优先使用配置文件中的快捷操作
+                            folder_name = skill_folder.name
+                            if folder_name in self._quick_actions:
+                                self._skills[skill_name].quick_actions = self._quick_actions[folder_name]
+                        count += 1
+
             except Exception as e:
-                logger.error(f"加载技能 {skill_name} 失败: {e}")
+                logger.error(f"加载技能 {skill_folder.name} 失败: {e}")
 
         logger.info(f"从配置文件加载完成，共注册 {count} 个技能")
         return count
 
-    def _load_skill_from_definition(
+    def _load_skill_resources(
         self,
-        skill_name: str,
-        skill_def: Dict[str, Any],
-        skills_dir: Path
-    ) -> Optional[BaseSkill]:
+        skill_dir: Path,
+        load_references: bool = True,
+        load_assets: bool = True
+    ) -> Dict[str, Any]:
         """
-        根据技能定义加载技能
-
-        新目录结构:
-        skills/
-        ├── skills.yaml
-        └── skill-name/
-            ├── SKILL.md
-            └── scripts/
-                └── executor.py
+        加载技能资源
 
         Args:
-            skill_name: 技能名称
-            skill_def: 技能定义（来自 YAML）
-            skills_dir: 技能根目录
+            skill_dir: 技能目录
+            load_references: 是否加载参考资料
+            load_assets: 是否加载模板资源
 
         Returns:
-            技能实例
+            资源字典
         """
-        # 新结构：技能目录下的 scripts/executor.py
-        skill_dir = skills_dir / skill_name
+        return ResourceLoader.load_skill_resources(
+            skill_dir,
+            load_references=load_references,
+            load_assets=load_assets
+        )
+
+    def _load_skill_class(
+        self,
+        skill_dir: Path,
+        metadata: SkillMetadata
+    ) -> Optional[Type[BaseSkill]]:
+        """
+        加载技能类
+
+        Args:
+            skill_dir: 技能目录
+            metadata: 技能元数据
+
+        Returns:
+            技能类，加载失败返回 None
+        """
         executor_path = skill_dir / "scripts" / "executor.py"
 
         if not executor_path.exists():
-            logger.error(f"技能执行器不存在: {executor_path}")
+            logger.warning(f"技能执行器不存在: {executor_path}")
             return None
 
         # 动态加载模块
-        module_name = f"skills_dynamic.{skill_name}"
+        module_name = f"skills_dynamic.{metadata.name}"
 
         # 添加项目根目录到 sys.path
-        project_root = skills_dir.parent
+        project_root = skill_dir.parent.parent
         if str(project_root) not in sys.path:
             sys.path.insert(0, str(project_root))
 
@@ -434,43 +657,61 @@ class SkillRegistry:
                         skill_class = obj
                         break
 
-            if skill_class is None:
-                logger.error(f"在模块中未找到技能类")
-                return None
-
-            # 构建配置
-            config_dict = skill_def.get('config', {})
-            config = SkillConfig(
-                priority=skill_def.get('priority', 10),
-                enabled=skill_def.get('enabled', True),
-                max_retries=config_dict.get('max_retries', 3),
-                timeout=config_dict.get('timeout', 30),
-                stream_enabled=config_dict.get('stream_enabled', True),
-            )
-
-            # 检查是否有装饰器配置
-            decorator_config = getattr(skill_class, '_skill_config', None)
-            if decorator_config:
-                config = decorator_config
-
-            # 注册技能
-            if self.register(skill_class, config):
-                # 保存快捷操作配置到元信息
-                quick_actions = skill_def.get('quick_actions', [])
-                # 使用技能实例的 name 作为 key（与 register 方法一致）
-                temp_instance = skill_class(config)
-                skill_key = temp_instance.name
-                if skill_key in self._skills:
-                    self._skills[skill_key].quick_actions = quick_actions
-                return skill_class
-
-            return None
+            return skill_class
 
         except Exception as e:
-            logger.error(f"加载技能模块失败: {skill_name}, 错误: {e}")
+            logger.error(f"加载技能模块失败: {metadata.name}, 错误: {e}")
             import traceback
             traceback.print_exc()
             return None
+
+    def auto_discover_from_skill_md(self, skills_dir: Path = None) -> int:
+        """
+        从 SKILL.md 自动发现技能
+
+        Args:
+            skills_dir: 技能目录，默认为项目根目录的 skills/
+
+        Returns:
+            成功注册的技能数量
+        """
+        if skills_dir is None:
+            project_root = Path(__file__).parent.parent.parent
+            skills_dir = project_root / "skills"
+
+        if not skills_dir.exists():
+            logger.warning(f"技能目录不存在: {skills_dir}")
+            return 0
+
+        count = 0
+
+        for skill_folder in skills_dir.iterdir():
+            if not skill_folder.is_dir():
+                continue
+            if skill_folder.name.startswith('_') or skill_folder.name.startswith('.'):
+                continue
+
+            skill_md_path = skill_folder / "SKILL.md"
+
+            if not skill_md_path.exists():
+                continue
+
+            try:
+                metadata = SkillMetaParser.parse_skill_metadata(skill_md_path)
+
+                if not metadata or not metadata.name:
+                    continue
+
+                skill_class = self._load_skill_class(skill_folder, metadata)
+
+                if skill_class and self.register(skill_class, metadata=metadata, skill_dir=skill_folder):
+                    count += 1
+
+            except Exception as e:
+                logger.error(f"发现技能失败 {skill_folder.name}: {e}")
+
+        logger.info(f"从 SKILL.md 发现完成，共注册 {count} 个技能")
+        return count
 
     def save_config(self, config_path: str = None) -> bool:
         """
@@ -488,7 +729,7 @@ class SkillRegistry:
 
         if config_path is None:
             project_root = Path(__file__).parent.parent.parent
-            config_path = project_root / "skills" / "skills.yaml"
+            config_path = project_root / "config" / "skills.yaml"
         else:
             config_path = Path(config_path)
 
@@ -500,25 +741,8 @@ class SkillRegistry:
                 'default_timeout': 30,
                 'default_retries': 3
             },
-            'skills': {}
+            'quick_actions': self._quick_actions
         }
-
-        for name, meta in self._skills.items():
-            temp_instance = meta.skill_class(meta.config)
-            config['skills'][name] = {
-                'name': temp_instance.name,
-                'description': temp_instance.description,
-                'version': temp_instance.version,
-                'enabled': meta.status == SkillStatus.ENABLED,
-                'priority': meta.config.priority,
-                'intents': temp_instance.supported_intents,
-                'required_tools': temp_instance.required_tools,
-                'config': {
-                    'max_retries': meta.config.max_retries,
-                    'timeout': meta.config.timeout,
-                    'stream_enabled': meta.config.stream_enabled
-                }
-            }
 
         try:
             config_path.parent.mkdir(parents=True, exist_ok=True)

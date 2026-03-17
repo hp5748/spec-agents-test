@@ -629,6 +629,7 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button class="header-btn" id="refreshBtn" onclick="refreshConfig()">[REFRESH]</button>
                 <button class="header-btn" onclick="newSession()">[NEW]</button>
                 <button class="header-btn" onclick="clearHistory()">[CLEAR]</button>
             </div>
@@ -987,6 +988,62 @@
                 await newSession();
             } catch (error) {
                 console.error('Error:', error);
+            }
+        }
+
+        // 刷新配置
+        async function refreshConfig() {
+            const btn = document.getElementById('refreshBtn');
+            const originalText = btn.textContent;
+
+            try {
+                // 显示加载状态
+                btn.textContent = '[LOADING...]';
+                btn.disabled = true;
+
+                // 调用刷新接口
+                const response = await fetch(`${API_BASE}/api/config/refresh`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.status === 'ok' && data.reloaded) {
+                    // 重新渲染欢迎区域（包含 quickActions 容器）
+                    const container = document.getElementById('messagesContainer');
+                    container.innerHTML = `
+                        <div class="welcome-message">
+                            <div class="welcome-icon">[ ]</div>
+                            <h2>System Ready</h2>
+                            <p>配置已刷新 // 加载了 ${data.loaded_count} 个技能</p>
+                            <div class="quick-actions" id="quickActions">
+                                <span style="color: var(--text-secondary); font-size: 0.8rem;">LOADING...</span>
+                            </div>
+                        </div>
+                    `;
+
+                    // 刷新快捷操作
+                    await loadQuickActions();
+
+                    // 更新状态显示
+                    updateStatus('connected', 'CONFIG RELOADED');
+
+                    // 2秒后恢复状态
+                    setTimeout(() => {
+                        updateStatus('connected', 'SYSTEM ONLINE');
+                    }, 2000);
+
+                    console.log(`配置刷新成功: ${data.message}`);
+                } else {
+                    console.error('配置刷新失败:', data.message);
+                    updateStatus('disconnected', 'REFRESH FAILED');
+                }
+            } catch (error) {
+                console.error('刷新配置失败:', error);
+                updateStatus('disconnected', 'REFRESH ERROR');
+            } finally {
+                // 恢复按钮状态
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         }
 
