@@ -48,10 +48,7 @@ SILICONFLOW_API_KEY=your_api_key_here
 
 ```bash
 # Windows
-start.bat
-
-# Linux/Mac
-./start.sh
+script\start.bat
 
 # 或直接运行
 cd src && python main.py
@@ -71,22 +68,22 @@ cd src && python main.py
 
 ### 概述
 
-Skills 是比 Tools 更高级的能力抽象层：
+Skills 是比 Tools 更高级的能力抽象层，支持 **Agent 驱动 Skill 执行闭环**：
 - 支持多步骤操作和专业知识
 - 每个技能独立目录，包含元数据和执行器
-- 通过 `skills/skills.yaml` 统一配置
-- 支持热加载
+- 元数据从 `SKILL.md` 扫描，配置简化
+- 支持重试、验证、降级和反馈机制
 
 ### 目录结构
 
 ```
 skills/
-├── skills.yaml              # 技能配置文件
 ├── order-assistant/         # 订单助手技能（模板示例）
 │   ├── SKILL.md             # 元数据和核心指令
 │   ├── scripts/
 │   │   └── executor.py      # 技能执行器
-│   └── references/          # 参考资料（可选）
+│   ├── references/          # 参考资料（可选）
+│   └── assets/              # 模板资源（可选）
 ```
 
 ### 配置新技能
@@ -97,22 +94,79 @@ skills/
 mkdir -p skills/your-skill/scripts
 ```
 
-**2. 编写 SKILL.md**
+**2. 编写 SKILL.md（完整配置）**
 
 ```markdown
 ---
+# ==========================================
+# 基础元数据（必需）
+# ==========================================
 name: your-skill
 description: 技能描述
 version: 1.0.0
 priority: 10
 intents:
   - your_intent
-required_tools:
-  - your_tool
+required_tools: []
+
+# ==========================================
+# 感知增强（可选）
+# ==========================================
+keywords:
+  - 关键词1
+  - 关键词2
+examples:
+  - "示例输入1"
+  - "示例输入2"
+
+# ==========================================
+# 执行配置（可选）
+# ==========================================
+execution:
+  timeout: 30
+  stream_enabled: true
+  load_references: true
+  load_assets: true
+
+# ==========================================
+# 验证配置（可选）
+# ==========================================
+validation:
+  result_schema: your_schema
+  required_fields:
+    - field1
+    - field2
+
+# ==========================================
+# 重试配置（可选）
+# ==========================================
+retry:
+  max_attempts: 3
+  strategy: exponential
+  base_delay: 1.0
+  retryable_errors:
+    - timeout
+    - rate_limit
+
+# ==========================================
+# 降级配置（可选）
+# ==========================================
+fallback:
+  strategy: llm_assist
+  message: "服务暂时不可用"
+
+# ==========================================
+# 反馈配置（可选）
+# ==========================================
+feedback:
+  error_templates:
+    validation_failed: "验证失败提示"
+    timeout: "超时提示"
 ---
 
 # 技能说明
-...
+
+详细描述技能的功能和使用方法...
 ```
 
 **3. 实现执行器 scripts/executor.py**
@@ -131,50 +185,57 @@ class YourSkill(BaseSkill):
     name = "your_skill"
     description = "技能描述"
     version = "1.0.0"
-    required_tools = ["your_tool"]
+    required_tools = []
     supported_intents = ["your_intent"]
 
     def execute(self, context: SkillContext) -> SkillResult:
+        # 访问资源
+        if context.references:
+            for ref in context.references:
+                print(f"参考: {ref.file_name}")
+
         # 实现逻辑
         return SkillResult(
             success=True,
             response="响应内容",
-            used_tools=["your_tool"]
+            used_tools=[]
         )
 
 SKILL_CLASS = YourSkill
 ```
 
-**4. 注册到 skills.yaml**
+**4. 配置快捷操作（config/skills.yaml）**
 
 ```yaml
-skills:
+# 元数据从 SKILL.md 扫描，此处只配置快捷操作
+quick_actions:
   your-skill:
-    name: your_skill
-    description: 技能描述
-    version: 1.0.0
-    enabled: true
-    priority: 10
-    intents:
-      - your_intent
-    required_tools:
-      - your_tool
-    # 快捷操作配置 - 前端动态加载
-    quick_actions:
-      - label: "[YOUR] 操作名称"
-        message: "预设的消息内容"
+    - label: "[YOUR] 操作名称"
+      message: "预设的消息内容"
+```
+
+### 执行闭环机制
+
+```
+1. 感知：多 Skill 匹配 + 置信度评估
+2. 规划：选择最佳 Skill + 准备降级方案
+3. 执行：资源加载 + 执行 + 状态追踪
+4. 观察：结果验证 + 决策
+5. 反馈：成功返回 / 重试 / 降级
 ```
 
 ### 快捷操作配置
 
-`quick_actions` 配置项用于定义前端界面中的快捷操作按钮，支持动态加载：
+`quick_actions` 配置项用于定义前端界面中的快捷操作按钮：
 
 ```yaml
 quick_actions:
-  - label: "[ORDER] 订单查询"    # 按钮显示文本
-    message: "查询订单 12345678"  # 点击后发送的消息
-  - label: "[ORDER] 待发货"
-    message: "查询订单 87654321"
+  order-assistant:
+    - label: "[ORDER] 订单查询"
+      message: "查询订单 12345678"
+  logistics-assistant:
+    - label: "[LOG] 物流查询"
+      message: "查询物流 SF1234567890"
 ```
 
 前端会在页面加载和新建会话时自动从 `/api/skills` 接口获取快捷操作并渲染按钮。
@@ -186,6 +247,58 @@ quick_actions:
 | `/api/skills` | GET | 列出所有技能 |
 | `/api/skills/reload` | POST | 重载所有技能 |
 | `/api/skills/{name}/reload` | POST | 重载单个技能 |
+| `/api/config/refresh` | POST | 刷新配置（扫描 skills 目录，检查 config 文件更新） |
+| `/api/config/status` | GET | 获取配置状态和已注册技能信息 |
+
+### 配置刷新接口
+
+**POST /api/config/refresh**
+
+刷新配置并返回最新状态：
+
+```json
+// 响应
+{
+  "status": "ok",
+  "reloaded": true,
+  "message": "成功重新加载 4 个技能",
+  "loaded_count": 4,
+  "skills": {
+    "count": 4,
+    "directories": [
+      {"name": "order-assistant", "has_skill_md": true, "has_executor": true},
+      {"name": "logistics-assistant", "has_skill_md": true, "has_executor": true}
+    ],
+    "registered": [...]  // 已注册的技能列表（含 quick_actions）
+  },
+  "config_files": {
+    "count": 2,
+    "list": [
+      {"name": "skills.yaml", "modified_time": "2024-01-15T10:30:00", "size": 2048},
+      {"name": "intents.yaml", "modified_time": "2024-01-15T09:00:00", "size": 1024}
+    ]
+  }
+}
+```
+
+**GET /api/config/status**
+
+获取当前配置状态：
+
+```json
+// 响应
+{
+  "config": {
+    "config_dir": "/path/to/config",
+    "exists": true,
+    "files": [...]
+  },
+  "registered_skills": {
+    "count": 4,
+    "list": [...]
+  }
+}
+```
 
 ### 参考：order-assistant 技能
 
